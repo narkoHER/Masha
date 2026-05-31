@@ -3,8 +3,8 @@ import time
 
 BOT_TOKEN   = "8566954882:AAHFX769zpn0d_CpQhEnM9V_Isv7TUwnT7s"
 CHANNEL_ID  = "-1003758993082"
-MINIAPP_URL = "t.me/masha_durak_bot/httpsnarkohergithubiomasha"
-API         = f"https://api.telegram.org/bot{8566954882:AAHFX769zpn0d_CpQhEnM9V_Isv7TUwnT7s}"
+MINIAPP_URL = "https://narkoher.github.io/Masha/"
+API         = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 r = requests.post(f"{API}/deleteWebhook", json={"drop_pending_updates": True})
 print("deleteWebhook:", r.json())
