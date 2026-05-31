@@ -27,7 +27,7 @@ const mashaRewards = [
   "./assets/masha/stage-4.png",
   "./assets/masha/stage-5.png",
   "./assets/masha/stage-6.png",
-  "./assets/masha/final.mp4"    
+  "./assets/masha/final_v2.mp4" // Изменили имя файла на случай кэша Telegram
 ];
 
 const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики", "бонусная игра"];
@@ -399,35 +399,32 @@ function afterPlayerDefense() {
 
 // -------------------------------------------------------------
 // ИДЕАЛЬНАЯ ЛОГИКА ОЦЕНКИ КАРТ + "ЛЕГАЛЬНЫЙ ЧИТ" МАШИ
-// Чем меньше score, тем охотнее Маша сыграет эту карту
 // -------------------------------------------------------------
 
 function attackScore(card) {
-  // Базовая цена (от 0 за шестерку до 8 за Туза). Чем меньше - тем лучше для скидывания.
   let score = card.value; 
   const isTrump = card.suit === state.trump.suit;
   
   if (isTrump) {
-    score += 50; // Штраф 50 очков за козырь (стараемся не ходить козырями)
+    score += 1000; // Огромный штраф за козырь (храним их до финала)
   }
 
-  // Бонус: если у нас есть пара, стараемся скинуть ее (минус 4 очка)
+  // Бонус: скидываем парные карты
   const duplicates = state.opponent.filter(c => c.rank === card.rank).length - 1;
-  score -= duplicates * 4;
+  score -= duplicates * 10;
 
-  // ИЛЛЮЗИЯ ГЕНИАЛЬНОСТИ (Уровни 4+)
-  if (campaign.difficulty >= 4) {
+  // ЧИТЫ МАШИ: Работают уже со 2-го уровня
+  if (campaign.difficulty >= 2) {
     const validDefenses = state.player.filter(c => cardBeats(c, card));
     
     if (validDefenses.length === 0) {
-      // Игрок вообще не может отбиться. Идеальный ход!
-      score -= 20; 
+      // Игрок вообще не может отбиться. Кидаем не раздумывая!
+      score -= 500; 
     } else if (!isTrump) {
-      // Игрок может отбиться. Но есть ли у него такая же масть?
       const hasSuit = validDefenses.some(c => c.suit === card.suit);
       if (!hasSuit) {
-        // У игрока нет масти, ему ПРИДЕТСЯ тратить козырь! Шикарный ход.
-        score -= 15;
+        // У игрока нет масти, ему ПРИДЕТСЯ тратить козырь! Вытягиваем их.
+        score -= 200;
       }
     }
   }
@@ -436,23 +433,22 @@ function attackScore(card) {
 }
 
 function defenseScore(card, attack) {
-  // Базовая цена. Чем меньше карта, тем лучше ей отбиться.
   let score = card.value; 
   
   const isTrumpDefense = card.suit === state.trump.suit;
   const isTrumpAttack = attack.suit === state.trump.suit;
 
   if (isTrumpDefense && !isTrumpAttack) {
-    score += 40; // Большой штраф за то, чтобы тратить козырь на обычную масть
+    score += 1000; // Огромный штраф за трату козыря на обычную масть
   }
 
-  // ИЛЛЮЗИЯ ГЕНИАЛЬНОСТИ (Уровни 4+)
-  if (campaign.difficulty >= 4) {
-    // Маша смотрит, есть ли у тебя карта такого же номинала, чтобы подкинуть
+  // ЧИТЫ МАШИ (Уровень 2+)
+  if (campaign.difficulty >= 2) {
+    // Маша смотрит в твою руку: можешь ли ты подкинуть этот номинал?
     const playerCanThrowIn = state.player.some(c => c.rank === card.rank);
     if (playerCanThrowIn) {
-      // Если ты можешь подкинуть, Маша дает штраф этой карте. Она постарается побить другой.
-      score += 15;
+      // Если ты можешь подкинуть, Маша избегает этой карты любой ценой
+      score += 500;
     }
   }
 
@@ -472,11 +468,11 @@ function chooseDefenseCard(hand, attack) {
   const options = [...hand].filter((card) => cardBeats(card, attack));
   if (!options.length) return null;
 
-  // Решает, стоит ли просто сдаться и взять
+  // Проверка на жадность (стоит ли взять)
   if (shouldTakeInsteadOfDefend(options.sort((a,b) => a.value - b.value)[0], attack)) return null;
   
-  // На 1 и 2 уровнях Маша может тупануть и сдаться, даже если есть чем бить
-  const mistakeChance = campaign.difficulty < 3 ? (0.25 - campaign.difficulty * 0.1) : 0;
+  // Ошибки и поддавки оставлены ТОЛЬКО для 1 уровня сложности
+  const mistakeChance = campaign.difficulty < 2 ? 0.15 : 0;
   if (Math.random() < mistakeChance) return null;
   
   return options
@@ -491,15 +487,15 @@ function chooseThrowIn(hand) {
   let options = [...hand].filter(card => ranksOnTable.has(card.rank));
   
   if (!options.length) return null;
-  if (hand !== state.opponent) return options.sort((a, b) => a.value - b.value)[0]; // Для игрока логика простая
+  if (hand !== state.opponent) return options.sort((a, b) => a.value - b.value)[0];
 
   return options.map(card => {
      let score;
-     // ЖЕСТОКИЙ ПОДБРОС (если игрок нажал "Беру", заваливаем его старшими картами)
-     if (campaign.difficulty >= 4 && (state.phase === "throw-to-taker" || state.pendingTake === "player")) {
-         // Инвертируем счет: чем старше не-козырь, тем лучше (-card.value)
+     // ЖЕСТОКИЙ ПОДБРОС (если игрок берет, заваливаем его старшими картами)
+     if (campaign.difficulty >= 2 && (state.phase === "throw-to-taker" || state.pendingTake === "player")) {
+         // Чем старше не-козырь, тем лучше его скинуть игроку (-card.value)
          score = -card.value; 
-         if (card.suit === state.trump.suit) score += 100; // НИКОГДА не отдаем свои козыри
+         if (card.suit === state.trump.suit) score += 2000; // НИКОГДА не отдаем свои козыри
      } else {
          // Обычный подброс во время атаки
          score = attackScore(card);
@@ -513,17 +509,23 @@ function shouldTakeInsteadOfDefend(bestDefense, attack) {
   const isTrumpAttack = attack.suit === state.trump.suit;
   const onlyTrumpCanBeat = isTrumpDefense && !isTrumpAttack;
   
-  // На 1 и 2 уровнях сложности она почти всегда честно пытается отбиться
-  if (campaign.difficulty < 3) {
+  // На 1 уровне играет честно
+  if (campaign.difficulty < 2) {
     return false;
   }
 
-  // Умная логика (Уровни 3+): Берем карту, если заставляют тратить слишком сильный козырь на мелочь
-  // Например, если бьют не-козырем (0-3), а у нее только козырь старше 10 (value >= 4)
-  if (onlyTrumpCanBeat && bestDefense.value >= 4 && attack.value <= 3) return true;
+  // Хардкор (Уровни 2+):
+  // Если заставляют бить козырем обычную карту - Маша лучше возьмет,
+  // чтобы накопить козыри (особенно если козырь старше 8-ки или колода еще полная)
+  if (onlyTrumpCanBeat) {
+    if (bestDefense.value > 2 || state.deck.length > 0) return true;
+  }
 
-  // Если игрок бьет обычным тузом, а у нас только козырь, иногда лучше забрать
-  if (onlyTrumpCanBeat && attack.value > 6 && state.deck.length > 4) return true;
+  // Если приходится отбиваться очень крупной не-козырной картой (Валет, Дама, Король, Туз),
+  // и в колоде еще много карт, лучше взять и накопить мощь для финала.
+  if (!isTrumpDefense && bestDefense.value >= 5 && state.deck.length > 10) {
+    return true;
+  }
 
   return false;
 }
@@ -638,6 +640,7 @@ function updateResultMedia(src) {
       ui.resultImage = video;
     }
     ui.resultImage.src = src;
+    ui.resultImage.load(); // <-- ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА
   } else {
     if (ui.resultImage.tagName !== "IMG") {
       const img = document.createElement("img");
@@ -701,7 +704,19 @@ function showResult(winner) {
   ui.nextRoundBtn.textContent = campaign.finished ? "Начать заново" : "Следующая партия";
   
   renderCampaign();
+  
+  // Открываем диалог
   ui.resultDialog.showModal();
+
+  // <-- ДОБАВЛЕННЫЙ БЛОК: Запускаем видео принудительно после открытия -->
+  if (ui.resultImage.tagName === "VIDEO") {
+    setTimeout(() => {
+      const playPromise = ui.resultImage.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(e => console.warn("iOS заблокировал автоплей:", e));
+      }
+    }, 50); 
+  }
 }
 
 function randomLine(type) {
