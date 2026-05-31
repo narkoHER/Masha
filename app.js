@@ -7,18 +7,31 @@ const suits = [
 const ranks = ["6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const values = Object.fromEntries(ranks.map((rank, index) => [rank, index]));
 
-const mashaScenes = [
+// Аватарки во время игры (Маша с картами)
+const mashaAvatars = [
   "./assets/masha/stage-0.png",
+  "./assets/masha/stage-1.png",     // Для 1 стадии нет версии .1
+  "./assets/masha/stage-2.1.png",
+  "./assets/masha/stage-3.1.png",
+  "./assets/masha/stage-4.1.png",
+  "./assets/masha/stage-5.1.png",
+  "./assets/masha/stage-6.1.png"
+];
+
+// Награды при победе в раунде (без карт + видео финал)
+const mashaRewards = [
+  "./assets/masha/stage-0.png", // Не используется как награда
   "./assets/masha/stage-1.png",
   "./assets/masha/stage-2.png",
   "./assets/masha/stage-3.png",
   "./assets/masha/stage-4.png",
   "./assets/masha/stage-5.png",
   "./assets/masha/stage-6.png",
+  "./assets/masha/final.mp4"    // Награда за бонусную игру
 ];
 
-// Обновленные этапы раздевания по ТЗ
-const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики"];
+// 6 элементов одежды + финальная игра
+const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики", "бонусная игра"];
 
 const mashaLines = {
   intro: [
@@ -133,7 +146,7 @@ const ui = {
   mashaPortrait: document.querySelector("#mashaPortrait"),
   clothesTrack: document.querySelector("#clothesTrack"),
   resultDialog: document.querySelector("#resultDialog"),
-  resultImage: document.querySelector("#resultImage"),
+  resultImage: document.querySelector("#resultImage"), // Будет динамически меняться на video
   resultKicker: document.querySelector("#resultKicker"),
   resultTitle: document.querySelector("#resultTitle"),
   resultText: document.querySelector("#resultText"),
@@ -164,7 +177,7 @@ function loadCampaign() {
     if (!saved || typeof saved !== "object") return newCampaign();
     return {
       lives: clampNumber(saved.lives, 0, 3, 3),
-      stage: clampNumber(saved.stage, 0, 6, 0),
+      stage: clampNumber(saved.stage, 0, 7, 0), // Лимит увеличен до 7
       round: clampNumber(saved.round, 1, 999, 1),
       difficulty: clampNumber(saved.difficulty, 1, 6, 1),
       finished: Boolean(saved.finished),
@@ -284,19 +297,12 @@ function cardBeats(defense, attack) {
   return defense.suit === state.trump.suit && attack.suit !== state.trump.suit;
 }
 
-// -------------------------------------------------------------
-// ИСПРАВЛЕНИЕ: Жесткий контроль лимита карт для подкидывания
-// -------------------------------------------------------------
 function canAttackWith(card) {
   if (!state.table.length) return true;
   const tableRanks = state.table.flatMap((pair) => [pair.attack.rank, pair.defense?.rank]).filter(Boolean);
-  
   const defender = state.defender === "player" ? state.player : state.opponent;
   const defendedCount = state.table.filter(p => p.defense).length;
-  
-  // Игрок физически не может подкинуть больше карт, чем было в руке Маши изначально
   const maxAllowedAttacks = Math.min(attackLimit(), defender.length + defendedCount);
-  
   return tableRanks.includes(card.rank) && state.table.length < maxAllowedAttacks;
 }
 
@@ -386,7 +392,6 @@ function opponentDefend() {
   rememberSeen(played);
   openPair.defense = played;
   
-  // Убран мусорный код с выбором карт для игрока
   state.phase = "attack";
   state.message = randomLine("mashaBeats");
   render();
@@ -394,8 +399,6 @@ function opponentDefend() {
 
 function afterPlayerDefense() {
   if (state.over) return;
-  
-  // ИСПРАВЛЕНИЕ: Маша подкидывает строго по правилам лимита карт
   const defendedCount = state.table.filter(p => p.defense).length;
   const maxAllowed = Math.min(attackLimit(), state.player.length + defendedCount);
   const extra = chooseThrowIn(state.opponent);
@@ -458,9 +461,6 @@ function defenseScore(card, attack) {
   return trumpCost + highCost - duplicateSave + lateValue;
 }
 
-// -------------------------------------------------------------
-// ИСПРАВЛЕНИЕ: Умный алгоритм решения "Взять или отбиться"
-// -------------------------------------------------------------
 function shouldTakeInsteadOfDefend(bestDefense, attack) {
   const isTrumpDefense = bestDefense.suit === state.trump.suit;
   const isTrumpAttack = attack.suit === state.trump.suit;
@@ -468,13 +468,11 @@ function shouldTakeInsteadOfDefend(bestDefense, attack) {
   const valueDifference = bestDefense.value - attack.value;
 
   if (campaign.difficulty >= 4) {
-    // УМНАЯ МАША: Берет карты, чтобы не тратить козыри и сильные карты на мелочь
     if (onlyTrumpCanBeat && bestDefense.value >= 5 && attack.value <= 3) return true;
     if (!onlyTrumpCanBeat && valueDifference >= 5 && state.deck.length > 0) return true;
     return false;
   }
 
-  // Для низких уровней сложности остается шанс случайной сдачи
   const saveGoodCardsChance = campaign.difficulty === 1 ? 0.42 : 0.22;
   const expensiveSameSuit = !onlyTrumpCanBeat && valueDifference > 3;
   return (onlyTrumpCanBeat || expensiveSameSuit) && Math.random() < saveGoodCardsChance;
@@ -516,31 +514,23 @@ function rememberSeen(card) {
   if (card) state.seenCardIds.add(card.id);
 }
 
-// -------------------------------------------------------------
-// ИСПРАВЛЕНИЕ: Прогрессия ошибок и агрессии Маши
-// -------------------------------------------------------------
 function opponentMistakeChance() {
-  if (campaign.difficulty >= 5) return 0; // Маша перестает ошибаться
+  if (campaign.difficulty >= 5) return 0;
   return Math.max(0.05, 0.35 - campaign.difficulty * 0.08);
 }
 
 function throwInAggression() {
-  if (campaign.difficulty >= 6) return 1.0; // В финале всегда подкидывает всё
+  if (campaign.difficulty >= 6) return 1.0;
   return Math.min(0.95, 0.50 + campaign.difficulty * 0.1);
 }
 
-// -------------------------------------------------------------
-// ИСПРАВЛЕНИЕ: Маша наказывает игрока, подкидывая карты, когда он берет
-// -------------------------------------------------------------
 function playerTake() {
   if (state.defender !== "player" || state.phase !== "defense") return;
   
-  // Маша докидывает всё что может вдогонку
   let extra;
   while (true) {
     const defendedCount = state.table.filter(p => p.defense).length;
     const maxAllowed = Math.min(attackLimit(), state.player.length + defendedCount);
-    
     if (state.table.length >= maxAllowed) break;
     
     extra = chooseThrowIn(state.opponent);
@@ -614,26 +604,74 @@ function finishMatch(winner) {
   if (state.resultHandled) return;
   state.over = true;
   state.resultHandled = true;
-  if (winner === "player") state.message = randomLine("win");
-  if (winner === "masha") state.message = randomLine("lose");
   if (winner === "draw") state.message = randomLine("draw");
   render();
   window.setTimeout(() => showResult(winner), 500);
 }
 
+// -------------------------------------------------------------------------
+// ФУНКЦИЯ ДЛЯ ДИНАМИЧЕСКОЙ СМЕНЫ IMG НА VIDEO И ОБРАТНО В ОКНЕ РЕЗУЛЬТАТОВ
+// -------------------------------------------------------------------------
+function updateResultMedia(src) {
+  const parent = ui.resultImage.parentNode;
+  const isVideo = src.endsWith(".mp4");
+
+  if (isVideo) {
+    if (ui.resultImage.tagName !== "VIDEO") {
+      const video = document.createElement("video");
+      video.id = "resultImage";
+      video.className = ui.resultImage.className;
+      video.controls = true;
+      video.autoplay = true;
+      video.loop = true;
+      video.playsInline = true;
+      parent.replaceChild(video, ui.resultImage);
+      ui.resultImage = video;
+    }
+    ui.resultImage.src = src;
+  } else {
+    if (ui.resultImage.tagName !== "IMG") {
+      const img = document.createElement("img");
+      img.id = "resultImage";
+      img.className = ui.resultImage.className;
+      parent.replaceChild(img, ui.resultImage);
+      ui.resultImage = img;
+    }
+    ui.resultImage.src = src;
+  }
+}
+
+// -------------------------------------------------------------------------
+// ОБНОВЛЕННАЯ ЛОГИКА РЕЗУЛЬТАТОВ (С БОНУСНОЙ ИГРОЙ И КРАСИВЫМИ ФОТО-НАГРАДАМИ)
+// -------------------------------------------------------------------------
 function showResult(winner) {
-  const previousStage = campaign.stage;
   let title = "Ничья";
   let kicker = "Раунд без потерь";
   let text = "Никто не продвинулся. Следующая партия начнется с той же сложности.";
+  let mediaSrc = mashaAvatars[campaign.stage]; // По умолчанию показываем текущий аватар
 
   if (winner === "player") {
-    campaign.stage = Math.min(6, campaign.stage + 1);
-    campaign.difficulty = Math.min(6, campaign.stage + 1);
-    kicker = `Победа ${campaign.stage}/6`;
-    title = campaign.stage >= 6 ? "Финал открыт" : `Маша снимает: ${removedItems[campaign.stage - 1]}`;
-    text = campaign.stage >= 6 ? "Ты прошел всю серию партий." : "Следующая партия будет сложнее.";
-    state.message = randomLine("win");
+    campaign.stage = Math.min(7, campaign.stage + 1);
+    campaign.difficulty = Math.min(6, campaign.stage + 1); // Максимальная сложность 6
+    
+    mediaSrc = mashaRewards[campaign.stage]; // Игрок победил - показываем картинку награды без карт
+
+    if (campaign.stage === 7) {
+      kicker = "Абсолютная победа";
+      title = "Ты прошел финальную игру";
+      text = "Ты меня победил... Вот твоя награда. Наслаждайся.";
+      state.message = "Ты меня победил. Вот твоя награда.";
+    } else {
+      kicker = `Победа ${campaign.stage}/7`;
+      if (campaign.stage === 6) {
+        title = `Маша снимает: трусики`;
+        text = "Она полностью голая! Осталась последняя бонусная игра на её желание.";
+      } else {
+        title = `Маша снимает: ${removedItems[campaign.stage - 1]}`;
+        text = "Следующая партия будет сложнее.";
+      }
+      state.message = randomLine("win");
+    }
   }
 
   if (winner === "masha") {
@@ -642,19 +680,20 @@ function showResult(winner) {
     title = campaign.lives ? "Минус одно сердце" : "Сердца закончились";
     text = campaign.lives ? "Маша оставляет свой текущий образ. Попробуй отыграться." : "Серия проиграна. Можно начать заново.";
     state.message = randomLine("lose");
+    mediaSrc = mashaAvatars[campaign.stage]; // Маша победила - показываем ее аватарку с картами
   }
 
-  if (winner === "draw") state.message = randomLine("draw");
-
-  campaign.finished = campaign.stage >= 6 || campaign.lives <= 0;
+  campaign.finished = campaign.stage >= 7 || campaign.lives <= 0;
   if (!campaign.finished) campaign.round += 1;
   saveCampaign();
 
-  ui.resultImage.src = mashaScenes[campaign.stage || previousStage];
+  updateResultMedia(mediaSrc); // Подставляем картинку (или видео) в диалоговое окно
+
   ui.resultKicker.textContent = kicker;
   ui.resultTitle.textContent = title;
   ui.resultText.textContent = text;
   ui.nextRoundBtn.textContent = campaign.finished ? "Начать заново" : "Следующая партия";
+  
   renderCampaign();
   ui.resultDialog.showModal();
 }
@@ -761,7 +800,10 @@ function trumpSuitElement() {
 function renderCampaign() {
   ui.modeLabel.textContent = `Партия ${campaign.round} · сложность ${campaign.difficulty}`;
   ui.lives.textContent = "♥".repeat(campaign.lives) + "♡".repeat(3 - campaign.lives);
-  ui.mashaPortrait.src = mashaScenes[campaign.stage];
+  
+  // Устанавливаем в качестве аватарки изображение Маши с картами (максимальный индекс - 6)
+  ui.mashaPortrait.src = mashaAvatars[Math.min(6, campaign.stage)];
+  
   ui.clothesTrack.replaceChildren(
     ...removedItems.map((_, index) => {
       const dot = document.createElement("span");
