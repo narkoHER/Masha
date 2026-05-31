@@ -1,0 +1,39 @@
+name: 📢 Отправить пост в канал
+
+on:
+  workflow_dispatch:
+    inputs:
+      caption:
+        description: "Текст поста"
+        required: true
+        default: "Текст поста"
+      photo_url:
+        description: "Ссылка на картинку (оставь пустым если не нужна)"
+        required: false
+        default: ""
+      button_text:
+        description: "Текст на кнопке"
+        required: true
+        default: "🃏 Сыграть в картишки"
+
+jobs:
+  send-post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Скачать код
+        uses: actions/checkout@v3
+
+      - name: 🐍 Установить Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Установить зависимости
+        run: pip install requests
+
+      - name: 🚀 Отправить пост
+        env:
+          CAPTION:     ${{ inputs.caption }}
+          BUTTON_TEXT: ${{ inputs.button_text }}
+          PHOTO_URL:   ${{ inputs.photo_url }}
+        run: python send_post.py
