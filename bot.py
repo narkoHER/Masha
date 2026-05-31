@@ -6,7 +6,6 @@ from telegram import (
     InputTextMessageContent,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    WebAppInfo,
 )
 from telegram.ext import Application, InlineQueryHandler
 
@@ -27,7 +26,7 @@ async def inline_query(update: Update, context):
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
                     "🃏 Сыграть в картишки",
-                    web_app=WebAppInfo(url=MINIAPP_URL)
+                    url=MINIAPP_URL
                 )
             ]])
         )
