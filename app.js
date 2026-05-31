@@ -8,13 +8,13 @@ const ranks = ["6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const values = Object.fromEntries(ranks.map((rank, index) => [rank, index]));
 
 const mashaScenes = [
-  "./assets/masha/stage-0.jpg",
-  "./assets/masha/stage-1.jpg",
-  "./assets/masha/stage-2.jpg",
-  "./assets/masha/stage-3.jpg",
-  "./assets/masha/stage-4.jpg",
-  "./assets/masha/stage-5.jpg",
-  "./assets/masha/stage-6.jpg",
+  "./assets/masha/stage-0.png",
+  "./assets/masha/stage-1.png",
+  "./assets/masha/stage-2.png",
+  "./assets/masha/stage-3.png",
+  "./assets/masha/stage-4.png",
+  "./assets/masha/stage-5.png",
+  "./assets/masha/stage-6.png",
 ];
 
 // Обновленные этапы раздевания по ТЗ
