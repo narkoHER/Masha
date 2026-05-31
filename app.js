@@ -10,7 +10,7 @@ const values = Object.fromEntries(ranks.map((rank, index) => [rank, index]));
 // Аватарки во время игры (Маша с картами)
 const mashaAvatars = [
   "./assets/masha/stage-0.png",
-  "./assets/masha/stage-1.png",     // Для 1 стадии нет версии .1
+  "./assets/masha/stage-1.png",     
   "./assets/masha/stage-2.1.png",
   "./assets/masha/stage-3.1.png",
   "./assets/masha/stage-4.1.png",
@@ -18,19 +18,18 @@ const mashaAvatars = [
   "./assets/masha/stage-6.1.png"
 ];
 
-// Награды при победе в раунде (без карт + видео финал)
+// Награды при победе в раунде
 const mashaRewards = [
-  "./assets/masha/stage-0.png", // Не используется как награда
+  "./assets/masha/stage-0.png", 
   "./assets/masha/stage-1.png",
   "./assets/masha/stage-2.png",
   "./assets/masha/stage-3.png",
   "./assets/masha/stage-4.png",
   "./assets/masha/stage-5.png",
   "./assets/masha/stage-6.png",
-  "./assets/masha/final.mp4"    // Награда за бонусную игру
+  "./assets/masha/final.mp4"    
 ];
 
-// 6 элементов одежды + финальная игра
 const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики", "бонусная игра"];
 
 const mashaLines = {
@@ -146,7 +145,7 @@ const ui = {
   mashaPortrait: document.querySelector("#mashaPortrait"),
   clothesTrack: document.querySelector("#clothesTrack"),
   resultDialog: document.querySelector("#resultDialog"),
-  resultImage: document.querySelector("#resultImage"), // Будет динамически меняться на video
+  resultImage: document.querySelector("#resultImage"),
   resultKicker: document.querySelector("#resultKicker"),
   resultTitle: document.querySelector("#resultTitle"),
   resultText: document.querySelector("#resultText"),
@@ -177,7 +176,7 @@ function loadCampaign() {
     if (!saved || typeof saved !== "object") return newCampaign();
     return {
       lives: clampNumber(saved.lives, 0, 3, 3),
-      stage: clampNumber(saved.stage, 0, 7, 0), // Лимит увеличен до 7
+      stage: clampNumber(saved.stage, 0, 7, 0),
       round: clampNumber(saved.round, 1, 999, 1),
       difficulty: clampNumber(saved.difficulty, 1, 6, 1),
       finished: Boolean(saved.finished),
@@ -190,9 +189,7 @@ function loadCampaign() {
 function saveCampaign() {
   try {
     localStorage.setItem(storageKey(), JSON.stringify(campaign));
-  } catch {
-    // Progress persistence is best-effort when storage is unavailable.
-  }
+  } catch {}
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -246,9 +243,7 @@ function startMatch() {
     over: false,
     resultHandled: false,
     firstBout: true,
-    pendingTake: null,
-    seenCardIds: new Set(),
-    knownPlayerCardIds: new Set(),
+    pendingTake: null
   };
   drawUp();
   pickFirstAttacker();
@@ -319,20 +314,10 @@ function playerHand() {
   return state.player;
 }
 
-function opponentHand() {
-  return state.opponent;
-}
-
-function defenderHand() {
-  return state.defender === "player" ? state.player : state.opponent;
-}
-
 function onPlayerCard(card) {
   if (state.over) return;
   if ((state.phase === "attack" || state.phase === "throw-to-taker") && state.attacker === "player" && canAttackWith(card)) {
     const played = removeCard(state.player, card.id);
-    rememberSeen(played);
-    state.knownPlayerCardIds.delete(played.id);
     state.table.push({ attack: played, defense: null });
     if (state.phase === "throw-to-taker") {
       state.message = randomLine("mashaTakes");
@@ -349,8 +334,6 @@ function onPlayerCard(card) {
     const openPair = state.table.find((pair) => !pair.defense);
     if (!openPair || !cardBeats(card, openPair.attack)) return;
     const played = removeCard(state.player, card.id);
-    rememberSeen(played);
-    state.knownPlayerCardIds.delete(played.id);
     openPair.defense = played;
     state.phase = "after-player-defense";
     state.message = randomLine("playerDefense");
@@ -367,7 +350,6 @@ function opponentAttack() {
     return;
   }
   const played = removeCard(state.opponent, card.id);
-  rememberSeen(played);
   state.table.push({ attack: played, defense: null });
   state.phase = "defense";
   state.message = randomLine("mashaAttack");
@@ -389,7 +371,6 @@ function opponentDefend() {
   }
   
   const played = removeCard(state.opponent, defense.id);
-  rememberSeen(played);
   openPair.defense = played;
   
   state.phase = "attack";
@@ -405,7 +386,6 @@ function afterPlayerDefense() {
   
   if (extra && state.table.length < maxAllowed) {
     const played = removeCard(state.opponent, extra.id);
-    rememberSeen(played);
     state.table.push({ attack: played, defense: null });
     state.phase = "defense";
     state.message = randomLine("mashaAttack");
@@ -415,6 +395,70 @@ function afterPlayerDefense() {
   state.phase = "can-finish";
   state.message = randomLine("beat");
   render();
+}
+
+// -------------------------------------------------------------
+// ИЛЛЮЗИЯ ГЕНИАЛЬНОСТИ (ПЛАВНАЯ ПРОГРЕССИЯ СЛОЖНОСТИ)
+// Маша подглядывает в карты и наказывает за слабые места
+// -------------------------------------------------------------
+function getCheatFactor() {
+  // От 0.0 (Сложность 1) до 1.0 (Сложность 6)
+  return Math.max(0, (campaign.difficulty - 1) / 5);
+}
+
+function attackScore(card) {
+  const isTrump = card.suit === state.trump.suit;
+  // Базовая эвристика: скинуть мелочь, приберечь козыри
+  let score = isTrump ? (24 - card.value) : (12 - card.value); 
+  
+  const cheatFactor = getCheatFactor();
+
+  if (cheatFactor > 0) {
+    // Маша анализирует руку игрока перед атакой
+    const validDefenses = state.player.filter(c => cardBeats(c, card));
+    
+    if (validDefenses.length === 0) {
+      // Игрок вообще не может побить эту карту. Идеальная атака!
+      score -= 30 * cheatFactor;
+    } else {
+      const trumpsInDefense = validDefenses.filter(c => c.suit === state.trump.suit);
+      const nonTrumpsInDefense = validDefenses.filter(c => c.suit !== state.trump.suit);
+
+      if (nonTrumpsInDefense.length === 0 && !isTrump) {
+        // У игрока нет масти, ему придется тратить козырь!
+        score -= 20 * cheatFactor;
+      } else if (nonTrumpsInDefense.some(c => c.value < 8)) {
+        // Игрок легко отобьется мелкой картой. Плохая атака.
+        score += 15 * cheatFactor;
+      }
+    }
+  }
+
+  // Бонус за парные карты (чтобы было что подкидывать)
+  const duplicates = state.opponent.filter(c => c.rank === card.rank).length - 1;
+  score -= duplicates * 5;
+
+  return score; // Чем меньше score, тем охотнее Маша пойдет этой картой
+}
+
+function defenseScore(card, attack) {
+  let score = card.value;
+  if (card.suit === state.trump.suit && attack.suit !== state.trump.suit) {
+     score += 15; // Штраф за трату козыря
+  }
+
+  const cheatFactor = getCheatFactor();
+
+  if (cheatFactor > 0) {
+    // Гениальная защита: если отбиться этой картой, сможет ли игрок ее подкинуть?
+    const playerHasRank = state.player.some(c => c.rank === card.rank);
+    if (playerHasRank) {
+      // Ужасная защита, игрок сразу ее подбросит обратно.
+      score += 25 * cheatFactor; 
+    }
+  }
+
+  return score;
 }
 
 function chooseAttackCard(hand) {
@@ -429,36 +473,37 @@ function chooseDefenseCard(hand, attack) {
   const options = [...hand].filter((card) => cardBeats(card, attack)).sort(sortCards);
   if (!options.length) return null;
   if (shouldTakeInsteadOfDefend(options[0], attack)) return null;
-  if (Math.random() < opponentMistakeChance()) return null;
+  
+  // Шанс тупой ошибки остается только на сложности 1 и 2
+  const mistakeChance = campaign.difficulty < 3 ? (0.2 - campaign.difficulty * 0.05) : 0;
+  if (Math.random() < mistakeChance) return null;
+  
   return options.map((card) => ({ card, score: defenseScore(card, attack) })).sort((a, b) => a.score - b.score)[0].card;
 }
 
 function chooseThrowIn(hand) {
   if (!state.table.length) return null;
-  if (hand === state.opponent && Math.random() > throwInAggression()) return null;
-  const ranksOnTable = new Set(state.table.flatMap((pair) => [pair.attack.rank, pair.defense?.rank]).filter(Boolean));
-  const options = [...hand].filter((card) => ranksOnTable.has(card.rank));
+  
+  const ranksOnTable = new Set(state.table.flatMap(pair => [pair.attack.rank, pair.defense?.rank]).filter(Boolean));
+  let options = [...hand].filter(card => ranksOnTable.has(card.rank));
+  
   if (!options.length) return null;
   if (hand !== state.opponent) return options.sort(sortCards)[0];
-  return options.map((card) => ({ card, score: attackScore(card) - duplicateRankBonus(card) })).sort((a, b) => a.score - b.score)[0].card;
-}
 
-function attackScore(card) {
-  const trumpPenalty = card.suit === state.trump.suit ? 24 - campaign.difficulty * 2 : 0;
-  const highPenalty = campaign.difficulty < 3 ? card.value * 2.2 : card.value * 0.75;
-  const duplicateBonus = duplicateRankBonus(card);
-  const knownPlayerPenalty = knownPlayerCanBeat(card) ? 7 - campaign.difficulty : 0;
-  const pressureBonus = campaign.difficulty >= 4 ? (14 - estimatedUnknownDefenses(card)) * 1.15 : 0;
-  const suitVoidBonus = campaign.difficulty >= 5 ? likelyPlayerShortSuitBonus(card) : 0;
-  return trumpPenalty + highPenalty + knownPlayerPenalty - duplicateBonus - pressureBonus - suitVoidBonus;
-}
-
-function defenseScore(card, attack) {
-  const trumpCost = card.suit === state.trump.suit && attack.suit !== state.trump.suit ? 18 - campaign.difficulty * 2 : 0;
-  const highCost = card.value * (campaign.difficulty < 3 ? 2.4 : 1.1);
-  const duplicateSave = duplicateRankBonus(card) * 0.4;
-  const lateValue = campaign.difficulty >= 5 && card.suit === state.trump.suit ? -2 : 0;
-  return trumpCost + highCost - duplicateSave + lateValue;
+  const cheatFactor = getCheatFactor();
+  
+  return options.map(card => {
+     let score = attackScore(card);
+     
+     if (cheatFactor > 0) {
+       // Если игрок сдался (Беру), Маша забивает его руку старшими картами, чтобы ему было тяжело играть
+       if (state.phase === "throw-to-taker" || state.pendingTake === "player") {
+          score -= card.value * cheatFactor * 2; // Предпочитаем тяжелые карты
+          if (card.suit === state.trump.suit) score += 50; // Козыри не отдаем!
+       }
+     }
+     return { card, score };
+  }).sort((a, b) => a.score - b.score)[0].card;
 }
 
 function shouldTakeInsteadOfDefend(bestDefense, attack) {
@@ -467,65 +512,31 @@ function shouldTakeInsteadOfDefend(bestDefense, attack) {
   const onlyTrumpCanBeat = isTrumpDefense && !isTrumpAttack;
   const valueDifference = bestDefense.value - attack.value;
 
-  if (campaign.difficulty >= 4) {
-    if (onlyTrumpCanBeat && bestDefense.value >= 5 && attack.value <= 3) return true;
-    if (!onlyTrumpCanBeat && valueDifference >= 5 && state.deck.length > 0) return true;
-    return false;
+  if (campaign.difficulty < 3) {
+    const saveGoodCardsChance = campaign.difficulty === 1 ? 0.3 : 0.1;
+    return onlyTrumpCanBeat && Math.random() < saveGoodCardsChance;
   }
 
-  const saveGoodCardsChance = campaign.difficulty === 1 ? 0.42 : 0.22;
-  const expensiveSameSuit = !onlyTrumpCanBeat && valueDifference > 3;
-  return (onlyTrumpCanBeat || expensiveSameSuit) && Math.random() < saveGoodCardsChance;
-}
+  // Умная сдача: Маша не тратит Королей и Тузов на шестерки
+  if (onlyTrumpCanBeat && bestDefense.value >= 6 && attack.value <= 3) return true;
+  if (!onlyTrumpCanBeat && valueDifference >= 6 && state.deck.length > 0) return true;
 
-function duplicateRankBonus(card) {
-  return state.opponent.filter((owned) => owned.rank === card.rank).length > 1 ? 5 + campaign.difficulty : 0;
-}
+  // Предвидение (Чит): Если она отобьется, завалит ли её игрок нерешаемым мусором?
+  const cheatFactor = getCheatFactor();
+  if (Math.random() < cheatFactor) {
+     const playerCanThrowIn = state.player.filter(c => c.rank === bestDefense.rank || c.rank === attack.rank);
+     if (playerCanThrowIn.length > 0) {
+        const myTrumps = state.opponent.filter(c => c.suit === state.trump.suit).length;
+        if (myTrumps === 0 && playerCanThrowIn.length >= 2) return true; // Сдается заранее
+     }
+  }
 
-function knownPlayerCanBeat(attack) {
-  if (campaign.difficulty < 5) return false;
-  return [...state.knownPlayerCardIds]
-    .map((id) => findCardById(id))
-    .filter(Boolean)
-    .some((card) => cardBeats(card, attack));
-}
-
-function estimatedUnknownDefenses(attack) {
-  return makeDeck().filter((card) => {
-    if (state.seenCardIds.has(card.id)) return false;
-    if (state.opponent.some((owned) => owned.id === card.id)) return false;
-    return cardBeats(card, attack);
-  }).length;
-}
-
-function likelyPlayerShortSuitBonus(card) {
-  const seenSuitCount = [...state.seenCardIds].map(findCardById).filter((seen) => seen?.suit === card.suit).length;
-  return Math.min(6, seenSuitCount * 0.45);
-}
-
-function findCardById(cardId) {
-  const [rank, ...suitParts] = cardId.split("-");
-  const suitId = suitParts.join("-");
-  const suit = suits.find((item) => item.id === suitId);
-  return suit ? { id: cardId, rank, value: values[rank], suit: suit.id, symbol: suit.symbol, red: suit.red } : null;
-}
-
-function rememberSeen(card) {
-  if (card) state.seenCardIds.add(card.id);
-}
-
-function opponentMistakeChance() {
-  if (campaign.difficulty >= 5) return 0;
-  return Math.max(0.05, 0.35 - campaign.difficulty * 0.08);
-}
-
-function throwInAggression() {
-  if (campaign.difficulty >= 6) return 1.0;
-  return Math.min(0.95, 0.50 + campaign.difficulty * 0.1);
+  return false;
 }
 
 function playerTake() {
   if (state.defender !== "player" || state.phase !== "defense") return;
+  state.pendingTake = "player"; // Флаг для агрессивного подброса
   
   let extra;
   while (true) {
@@ -537,12 +548,10 @@ function playerTake() {
     if (!extra) break;
     
     const played = removeCard(state.opponent, extra.id);
-    rememberSeen(played);
     state.table.push({ attack: played, defense: null });
   }
 
-  const takenCards = collectTable();
-  takenCards.forEach((card) => state.knownPlayerCardIds.add(card.id));
+  const takenCards = state.table.flatMap((pair) => [pair.attack, pair.defense]).filter(Boolean);
   state.player.push(...takenCards);
   state.message = randomLine("playerTakes");
   endRound("opponent");
@@ -550,7 +559,8 @@ function playerTake() {
 
 function finishBeat() {
   if (state.phase === "throw-to-taker" && state.pendingTake === "opponent") {
-    state.opponent.push(...collectTable());
+    const takenCards = state.table.flatMap((pair) => [pair.attack, pair.defense]).filter(Boolean);
+    state.opponent.push(...takenCards);
     state.message = randomLine("mashaTakes");
     endRound("player");
     return;
@@ -585,10 +595,6 @@ function endRound(nextAttacker) {
   if (state.attacker === "opponent") window.setTimeout(opponentAttack, 750);
 }
 
-function collectTable() {
-  return state.table.flatMap((pair) => [pair.attack, pair.defense]).filter(Boolean);
-}
-
 function checkGameOver() {
   if (state.deck.length || (state.player.length && state.opponent.length)) return;
   if (!state.player.length && !state.opponent.length) {
@@ -609,9 +615,6 @@ function finishMatch(winner) {
   window.setTimeout(() => showResult(winner), 500);
 }
 
-// -------------------------------------------------------------------------
-// ФУНКЦИЯ ДЛЯ ДИНАМИЧЕСКОЙ СМЕНЫ IMG НА VIDEO И ОБРАТНО В ОКНЕ РЕЗУЛЬТАТОВ
-// -------------------------------------------------------------------------
 function updateResultMedia(src) {
   const parent = ui.resultImage.parentNode;
   const isVideo = src.endsWith(".mp4");
@@ -641,20 +644,17 @@ function updateResultMedia(src) {
   }
 }
 
-// -------------------------------------------------------------------------
-// ОБНОВЛЕННАЯ ЛОГИКА РЕЗУЛЬТАТОВ (С БОНУСНОЙ ИГРОЙ И КРАСИВЫМИ ФОТО-НАГРАДАМИ)
-// -------------------------------------------------------------------------
 function showResult(winner) {
   let title = "Ничья";
   let kicker = "Раунд без потерь";
   let text = "Никто не продвинулся. Следующая партия начнется с той же сложности.";
-  let mediaSrc = mashaAvatars[campaign.stage]; // По умолчанию показываем текущий аватар
+  let mediaSrc = mashaAvatars[campaign.stage]; 
 
   if (winner === "player") {
     campaign.stage = Math.min(7, campaign.stage + 1);
-    campaign.difficulty = Math.min(6, campaign.stage + 1); // Максимальная сложность 6
+    campaign.difficulty = Math.min(6, campaign.stage + 1); 
     
-    mediaSrc = mashaRewards[campaign.stage]; // Игрок победил - показываем картинку награды без карт
+    mediaSrc = mashaRewards[campaign.stage]; 
 
     if (campaign.stage === 7) {
       kicker = "Абсолютная победа";
@@ -680,14 +680,14 @@ function showResult(winner) {
     title = campaign.lives ? "Минус одно сердце" : "Сердца закончились";
     text = campaign.lives ? "Маша оставляет свой текущий образ. Попробуй отыграться." : "Серия проиграна. Можно начать заново.";
     state.message = randomLine("lose");
-    mediaSrc = mashaAvatars[campaign.stage]; // Маша победила - показываем ее аватарку с картами
+    mediaSrc = mashaAvatars[campaign.stage]; 
   }
 
   campaign.finished = campaign.stage >= 7 || campaign.lives <= 0;
   if (!campaign.finished) campaign.round += 1;
   saveCampaign();
 
-  updateResultMedia(mediaSrc); // Подставляем картинку (или видео) в диалоговое окно
+  updateResultMedia(mediaSrc); 
 
   ui.resultKicker.textContent = kicker;
   ui.resultTitle.textContent = title;
@@ -801,7 +801,6 @@ function renderCampaign() {
   ui.modeLabel.textContent = `Партия ${campaign.round} · сложность ${campaign.difficulty}`;
   ui.lives.textContent = "♥".repeat(campaign.lives) + "♡".repeat(3 - campaign.lives);
   
-  // Устанавливаем в качестве аватарки изображение Маши с картами (максимальный индекс - 6)
   ui.mashaPortrait.src = mashaAvatars[Math.min(6, campaign.stage)];
   
   ui.clothesTrack.replaceChildren(

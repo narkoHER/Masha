@@ -420,7 +420,8 @@ dialog button {
   gap: 0;
 }
 
-.result-dialog img {
+.result-dialog img,
+.result-dialog video {
   width: 100%;
   height: min(62vh, 620px);
   display: block;
