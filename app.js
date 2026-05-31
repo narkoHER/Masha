@@ -635,10 +635,14 @@ function updateResultMedia(src) {
       const video = document.createElement("video");
       video.id = "resultImage";
       video.className = ui.resultImage.className;
+      
+      // Критичные настройки для iOS
       video.controls = true;
       video.autoplay = true;
       video.loop = true;
       video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
       video.setAttribute("playsinline", ""); 
       video.setAttribute("webkit-playsinline", ""); 
       
@@ -650,8 +654,16 @@ function updateResultMedia(src) {
       parent.replaceChild(video, ui.resultImage);
       ui.resultImage = video;
     }
+    
     ui.resultImage.src = src;
     ui.resultImage.load(); 
+    
+    const playPromise = ui.resultImage.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        // Гасим ошибку в консоли, если браузер ждет тапа
+      });
+    }
   } else {
     if (ui.resultImage.tagName !== "IMG") {
       const img = document.createElement("img");
@@ -707,8 +719,6 @@ function showResult(winner) {
   if (!campaign.finished) campaign.round += 1;
   saveCampaign();
 
-  updateResultMedia(mediaSrc); 
-
   ui.resultKicker.textContent = kicker;
   ui.resultTitle.textContent = title;
   ui.resultText.textContent = text;
@@ -716,18 +726,11 @@ function showResult(winner) {
   
   renderCampaign();
   
-  // Открываем диалог
+  // Открываем диалог ДО того, как вставим туда видео, чтобы обойти баг iOS Safari
   ui.resultDialog.showModal();
 
-  // Запускаем видео принудительно после открытия
-  if (ui.resultImage.tagName === "VIDEO") {
-    setTimeout(() => {
-      const playPromise = ui.resultImage.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(e => console.warn("iOS заблокировал автоплей:", e));
-      }
-    }, 50); 
-  }
+  // Передаем ссылку. Айфон видит, что элемент уже видимый, и начинает загрузку.
+  updateResultMedia(mediaSrc); 
 }
 
 function randomLine(type) {
