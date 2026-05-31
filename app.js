@@ -61,7 +61,7 @@ const mashaLines = {
     ["Ладно, беру. Только не празднуй.", "Забираю. Бывает.", "Хм. Неприятно, но терпимо.", "Я возьму и сделаю вид, что так задумано.", "Смотри не улыбайся слишком широко.", "Карты ко мне, взгляд к тебе.", "Ладно, подкидывай, если есть смелость.", "Я беру. Но память у меня хорошая."],
     ["Беру. Ты начинаешь раздражать приятно.", "Ладно, этот раунд за тобой.", "Подкидывай, если рука не дрожит.", "Я возьму, но потом верну с процентами.", "Неплохо поймал.", "Не радуйся, это еще не победа.", "Беру и запоминаю ранг.", "Хорошо, ты вынудил."],
     ["Беру. Значит, у тебя есть связка.", "Ты красиво меня прижал.", "Ладно, добавляй, если подготовил пару.", "Я возьму эти карты, но потом ими же накажу.", "Вот это уже похоже на игру.", "Ты заставил меня раскрыться. Цени.", "Беру и пересчитываю варианты.", "Хорошо. Этот кусочек партии твой."],
-    ["Беру. Довольный? Пока рано.", "Подкидывай еще. Я выдержу.", "Ты хочешь раздеть меня ходами? Тогда не останавливайся.", "Ладно, твоя наглость сработала.", "Я беру, но потом сама выберу ставку.", "Этот раунд стал горячее.", "Добавляй пару. Не делай вид, что ক্ষমতায় нет.", "Ты поймал меня. Мне это даже нравится."],
+    ["Беру. Довольный? Пока рано.", "Подкидывай еще. Я выдержу.", "Ты хочешь раздеть меня ходами? Тогда не останавливайся.", "Ладно, твоя наглость сработала.", "Я беру, но потом сама выберу ставку.", "Этот раунд стал горячее.", "Добавляй пару. Не делай вид, что ее нет.", "Ты поймал меня. Мне это даже нравится."],
     ["Беру. Редко, но метко.", "Ты заставил меня собрать лишнее. Умно.", "Подкидывай все, что подходит. Я хочу увидеть жадность.", "Хорошая комбинация. Не испорти ее.", "Беру и начинаю мстить уже в голове.", "Ты считает лучше, чем я думала.", "Если так продолжишь, придется играть на желания.", "Ладно. Один красивый удар тебе засчитан."],
     ["Беру. На финале это дорого.", "Ты выбил из меня ресурс. Уважаю.", "Подкидывай. Финал любит жестокость.", "Хорошо поймал. Но теперь у меня больше карт для ответа.", "Это была сильная атака.", "Я беру, но желание все еще не твое.", "Ты умеешь давить. Проверим, умеешь ли завершать.", "Вот теперь я правда злюсь."],
   ],
@@ -343,36 +343,47 @@ function onPlayerCard(card) {
 }
 
 // -------------------------------------------------------------
-// ПРОФЕССИОНАЛЬНЫЙ ИИ (АЛГОРИТМ ДУРАКА + ЧИТЫ МАШИ)
+// ПРОФЕССИОНАЛЬНЫЙ ИИ (ТАКТИЧЕСКИЙ ДВИЖОК)
 // -------------------------------------------------------------
 
-// Оценка "веса" карты. Чем меньше, тем охотнее ИИ с ней расстанется.
-function getCardWeight(card) {
-  // Обычные карты: 0-8. Козыри: 50-58.
-  return card.value + (card.suit === state.trump.suit ? 50 : 0);
+// Оценка ценности карты (чем меньше вес, тем быстрее скидываем)
+function getBaseWeight(card) {
+  // Не-козыри: 0-8. Козыри: 100-108.
+  return card.value + (card.suit === state.trump.suit ? 100 : 0);
 }
 
-// Выбор карты для ПЕРВОГО хода на пустой стол
+// 1. УМНАЯ АТАКА (Приоритет парным картам и сливу мелочи)
 function chooseAttackCard(hand) {
   const candidates = [...hand].filter(canAttackWith);
   if (!candidates.length) return null;
 
-  // ИИ ВСЕГДА должен ходить с самого мелкого мусора
-  return candidates.sort((a, b) => {
-    let weightA = getCardWeight(a);
-    let weightB = getCardWeight(b);
+  // Считаем количество каждой карты по рангу в руке (ищем пары и тройки)
+  const rankCounts = {};
+  hand.forEach(c => { rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1; });
 
-    // Бонус за парные карты (стараемся скидывать пары, вычитая немного веса)
-    const dupA = hand.filter(c => c.rank === a.rank).length - 1;
-    const dupB = hand.filter(c => c.rank === b.rank).length - 1;
-    weightA -= dupA * 2;
-    weightB -= dupB * 2;
+  return candidates.sort((a, b) => {
+    let weightA = getBaseWeight(a);
+    let weightB = getBaseWeight(b);
+
+    // ТАКТИКА: Скидываем карты, которых у нас много (чтобы подкидывать)
+    // Отнимаем по 15 очков за каждый дубликат
+    weightA -= (rankCounts[a.rank] - 1) * 15;
+    weightB -= (rankCounts[b.rank] - 1) * 15;
+
+    // ЧИТ (Уровни 4+): Если это эндшпиль (колода пуста) или мы знаем, что игроку нечем бить
+    if (campaign.difficulty >= 4) {
+      const playerCanBeatA = state.player.some(c => cardBeats(c, a));
+      const playerCanBeatB = state.player.some(c => cardBeats(c, b));
+      
+      if (!playerCanBeatA && a.suit !== state.trump.suit) weightA -= 50; // Бьем наверняка
+      if (!playerCanBeatB && b.suit !== state.trump.suit) weightB -= 50;
+    }
 
     return weightA - weightB;
   })[0];
 }
 
-// Выбор карты для ПОДКИДЫВАНИЯ (когда игрок бьется или берет)
+// 2. ЖЕСТОКИЙ ПОДБРОС ИЛИ ДОБИВАНИЕ
 function chooseThrowIn(hand) {
   if (!state.table.length) return null;
 
@@ -380,25 +391,27 @@ function chooseThrowIn(hand) {
   let options = [...hand].filter(card => ranksOnTable.has(card.rank));
 
   if (!options.length) return null;
-  if (hand !== state.opponent) return options.sort((a, b) => getCardWeight(a) - getCardWeight(b))[0]; // логика авто-подкидывания игрока
+  
+  // Если это игрок подкидывает сам себе (авто-логика игры)
+  if (hand !== state.opponent) return options.sort((a, b) => getBaseWeight(a) - getBaseWeight(b))[0]; 
 
   const isPlayerTaking = (state.phase === "throw-to-taker" || state.pendingTake === "player");
 
   return options.sort((a, b) => {
-    let weightA = getCardWeight(a);
-    let weightB = getCardWeight(b);
+    let weightA = getBaseWeight(a);
+    let weightB = getBaseWeight(b);
 
-    if (isPlayerTaking && campaign.difficulty >= 2) {
-      // ЖЕСТОКИЙ ПОДБРОС: Игрок берет. Заваливаем его самыми старшими НЕ-козырными картами.
-      // Козыри (вес > 40) не отдаем никогда (вес 1000).
-      weightA = (a.suit === state.trump.suit) ? 1000 : -a.value;
-      weightB = (b.suit === state.trump.suit) ? 1000 : -b.value;
+    if (isPlayerTaking) {
+      // Игрок сдался и берет взятку. 
+      // Цель: забить его руку максимально крупным не-козырным мусором (Короли, Дамы).
+      weightA = a.suit === state.trump.suit ? 1000 : -a.value; 
+      weightB = b.suit === state.trump.suit ? 1000 : -b.value;
     } else if (campaign.difficulty >= 3) {
-      // Игрок отбивается. Ищем его слабости.
+      // Игрок отбивается. Смотрим, можем ли мы вытянуть из него козырь?
       const playerCanBeatA = state.player.some(c => cardBeats(c, a));
       const playerCanBeatB = state.player.some(c => cardBeats(c, b));
 
-      // Если мы точно знаем, что игрок НЕ МОЖЕТ побить эту карту, и это не козырь - кидаем её в первую очередь!
+      // Если мы кинем карту, и он не сможет ее отбить не-козырем - это отличный подброс
       if (!playerCanBeatA && a.suit !== state.trump.suit) weightA -= 30;
       if (!playerCanBeatB && b.suit !== state.trump.suit) weightB -= 30;
     }
@@ -407,22 +420,23 @@ function chooseThrowIn(hand) {
   })[0];
 }
 
-// Выбор карты для ЗАЩИТЫ
+// 3. ЭКОНОМНАЯ ЗАЩИТА И БЛОКИРОВКА
 function chooseDefenseCard(hand, attack) {
   const options = [...hand].filter((card) => cardBeats(card, attack));
   if (!options.length) return null;
 
+  // Сортируем варианты от худших для нас к лучшим
   options.sort((a, b) => {
-    let weightA = getCardWeight(a);
-    let weightB = getCardWeight(b);
+    let weightA = getBaseWeight(a);
+    let weightB = getBaseWeight(b);
 
-    // ЧИТЫ МАШИ (Уровень 4+): Подглядываем в руку игрока.
-    // Если мы побьем картой X, а у игрока есть такая же карта (он сможет её подкинуть) - стараемся не бить ею.
-    if (campaign.difficulty >= 4) {
-       const playerCanThrowA = state.player.some(c => c.rank === a.rank);
-       const playerCanThrowB = state.player.some(c => c.rank === b.rank);
-       if (playerCanThrowA) weightA += 15;
-       if (playerCanThrowB) weightB += 15;
+    // ЧИТ (Уровни 5+): Блокировка подкидывания.
+    // Если мы побьем картой, которая УЖЕ есть у игрока, он нам ее подкинет. Избегаем этого.
+    if (campaign.difficulty >= 5) {
+       const playerHasA = state.player.some(c => c.rank === a.rank);
+       const playerHasB = state.player.some(c => c.rank === b.rank);
+       if (playerHasA) weightA += 25; // Штраф за риск получить эту карту обратно
+       if (playerHasB) weightB += 25;
     }
 
     return weightA - weightB;
@@ -430,38 +444,48 @@ function chooseDefenseCard(hand, attack) {
 
   const bestDefense = options[0];
 
-  // Решаем, стоит ли просто забрать карты из-за жадности
+  // Решаем, стоит ли просто забрать карты из-за макро-жадности
   if (shouldTakeInsteadOfDefend(bestDefense, attack)) return null;
 
-  // Ошибки и поддавки оставлены ТОЛЬКО на 1 уровне
-  if (campaign.difficulty === 1 && Math.random() < 0.15) return null;
+  // Ошибки оставлены ТОЛЬКО на 1-м уровне сложности
+  if (campaign.difficulty === 1 && Math.random() < 0.20) return null;
 
   return bestDefense;
 }
 
-// Логика жадности (забирать карты, чтобы копить козыри)
+// 4. МАКРО-ЖАДНОСТЬ (Управление экономикой колоды)
 function shouldTakeInsteadOfDefend(bestDefense, attack) {
   if (campaign.difficulty < 2) return false;
 
   const isTrumpDefense = bestDefense.suit === state.trump.suit;
   const isTrumpAttack = attack.suit === state.trump.suit;
-  const onlyTrumpCanBeat = isTrumpDefense && !isTrumpAttack;
+  const isEarlyGame = state.deck.length > 10;
+  
+  if (isTrumpDefense && !isTrumpAttack) {
+    // Нас заставляют бить козырем обычную карту.
+    
+    if (campaign.difficulty >= 4 && isEarlyGame) {
+      // Если это начало игры, Маша вообще не хочет отдавать козыри, лучше возьмет
+      return true; 
+    }
 
-  if (onlyTrumpCanBeat) {
-    // Умная жадность: если нас заставляют тратить старший козырь (Валет и выше) на мелкий мусор,
-    // и в колоде еще есть карты - лучше забрать, чтобы сохранить мощь на финал.
-    if (bestDefense.value >= 5 && state.deck.length > 6) return true;
+    if (campaign.difficulty >= 2) {
+      // Если нас заставляют тратить Даму/Короля/Туза козырей на мелочь, берем 100%
+      if (bestDefense.value >= 6) return true;
+      
+      // Если козырь средний (9, 10, Валет), а колода еще приличная - берем
+      if (bestDefense.value >= 3 && state.deck.length > 5) return true;
+    }
+  }
 
-    // На 6-7 уровнях Маша вообще не отдает козыри старше 9-ки в начале игры за просто так
-    if (campaign.difficulty >= 6 && bestDefense.value >= 3 && attack.value <= 4 && state.deck.length > 10) return true;
+  // На максимальной сложности (6-7) она забирает карты, даже если приходится бить не-козырным Тузом
+  // в начале игры, чтобы оставить Туза для атаки.
+  if (campaign.difficulty >= 6 && !isTrumpDefense && bestDefense.value >= 7 && isEarlyGame) {
+    return true;
   }
 
   return false;
 }
-
-// -------------------------------------------------------------
-// ИГРОВОЙ ЦИКЛ
-// -------------------------------------------------------------
 
 function opponentAttack() {
   if (state.over || state.attacker !== "opponent") return;
@@ -691,8 +715,11 @@ function showResult(winner) {
   ui.nextRoundBtn.textContent = campaign.finished ? "Начать заново" : "Следующая партия";
   
   renderCampaign();
+  
+  // Открываем диалог
   ui.resultDialog.showModal();
 
+  // Запускаем видео принудительно после открытия
   if (ui.resultImage.tagName === "VIDEO") {
     setTimeout(() => {
       const playPromise = ui.resultImage.play();
