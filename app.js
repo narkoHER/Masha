@@ -27,7 +27,7 @@ const mashaRewards = [
   "./assets/masha/stage-4.png",
   "./assets/masha/stage-5.png",
   "./assets/masha/stage-6.png",
-  "./assets/masha/final.mp4" 
+  "https://files.catbox.moe/9qmjlw.mp4" 
 ];
 
 const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики", "бонусная игра"];
