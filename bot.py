@@ -78,4 +78,3 @@ while True:
 
         elif text == "/post":
             send_game_post(CHANNEL_ID)
-```
