@@ -27,7 +27,7 @@ const mashaRewards = [
   "./assets/masha/stage-4.png",
   "./assets/masha/stage-5.png",
   "./assets/masha/stage-6.png",
-  "./assets/masha/final_v2.mp4" // Изменили имя файла на случай кэша Telegram
+  "./assets/masha/final_v2.mp4" 
 ];
 
 const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики", "бонусная игра"];
@@ -61,7 +61,7 @@ const mashaLines = {
     ["Ладно, беру. Только не празднуй.", "Забираю. Бывает.", "Хм. Неприятно, но терпимо.", "Я возьму и сделаю вид, что так задумано.", "Смотри не улыбайся слишком широко.", "Карты ко мне, взгляд к тебе.", "Ладно, подкидывай, если есть смелость.", "Я беру. Но память у меня хорошая."],
     ["Беру. Ты начинаешь раздражать приятно.", "Ладно, этот раунд за тобой.", "Подкидывай, если рука не дрожит.", "Я возьму, но потом верну с процентами.", "Неплохо поймал.", "Не радуйся, это еще не победа.", "Беру и запоминаю ранг.", "Хорошо, ты вынудил."],
     ["Беру. Значит, у тебя есть связка.", "Ты красиво меня прижал.", "Ладно, добавляй, если подготовил пару.", "Я возьму эти карты, но потом ими же накажу.", "Вот это уже похоже на игру.", "Ты заставил меня раскрыться. Цени.", "Беру и пересчитываю варианты.", "Хорошо. Этот кусочек партии твой."],
-    ["Беру. Довольный? Пока рано.", "Подкидывай еще. Я выдержу.", "Ты хочешь раздеть меня ходами? Тогда не останавливайся.", "Ладно, твоя наглость сработала.", "Я беру, но потом сама выберу ставку.", "Этот раунд стал горячее.", "Добавляй пару. Не делай вид, что ее нет.", "Ты поймал меня. Мне это даже нравится."],
+    ["Беру. Довольный? Пока рано.", "Подкидывай еще. Я выдержу.", "Ты хочешь раздеть меня ходами? Тогда не останавливайся.", "Ладно, твоя наглость сработала.", "Я беру, но потом сама выберу ставку.", "Этот раунд стал горячее.", "Добавляй пару. Не делай вид, что ক্ষমতায় нет.", "Ты поймал меня. Мне это даже нравится."],
     ["Беру. Редко, но метко.", "Ты заставил меня собрать лишнее. Умно.", "Подкидывай все, что подходит. Я хочу увидеть жадность.", "Хорошая комбинация. Не испорти ее.", "Беру и начинаю мстить уже в голове.", "Ты считает лучше, чем я думала.", "Если так продолжишь, придется играть на желания.", "Ладно. Один красивый удар тебе засчитан."],
     ["Беру. На финале это дорого.", "Ты выбил из меня ресурс. Уважаю.", "Подкидывай. Финал любит жестокость.", "Хорошо поймал. Но теперь у меня больше карт для ответа.", "Это была сильная атака.", "Я беру, но желание все еще не твое.", "Ты умеешь давить. Проверим, умеешь ли завершать.", "Вот теперь я правда злюсь."],
   ],
@@ -342,6 +342,127 @@ function onPlayerCard(card) {
   }
 }
 
+// -------------------------------------------------------------
+// ПРОФЕССИОНАЛЬНЫЙ ИИ (АЛГОРИТМ ДУРАКА + ЧИТЫ МАШИ)
+// -------------------------------------------------------------
+
+// Оценка "веса" карты. Чем меньше, тем охотнее ИИ с ней расстанется.
+function getCardWeight(card) {
+  // Обычные карты: 0-8. Козыри: 50-58.
+  return card.value + (card.suit === state.trump.suit ? 50 : 0);
+}
+
+// Выбор карты для ПЕРВОГО хода на пустой стол
+function chooseAttackCard(hand) {
+  const candidates = [...hand].filter(canAttackWith);
+  if (!candidates.length) return null;
+
+  // ИИ ВСЕГДА должен ходить с самого мелкого мусора
+  return candidates.sort((a, b) => {
+    let weightA = getCardWeight(a);
+    let weightB = getCardWeight(b);
+
+    // Бонус за парные карты (стараемся скидывать пары, вычитая немного веса)
+    const dupA = hand.filter(c => c.rank === a.rank).length - 1;
+    const dupB = hand.filter(c => c.rank === b.rank).length - 1;
+    weightA -= dupA * 2;
+    weightB -= dupB * 2;
+
+    return weightA - weightB;
+  })[0];
+}
+
+// Выбор карты для ПОДКИДЫВАНИЯ (когда игрок бьется или берет)
+function chooseThrowIn(hand) {
+  if (!state.table.length) return null;
+
+  const ranksOnTable = new Set(state.table.flatMap(pair => [pair.attack.rank, pair.defense?.rank]).filter(Boolean));
+  let options = [...hand].filter(card => ranksOnTable.has(card.rank));
+
+  if (!options.length) return null;
+  if (hand !== state.opponent) return options.sort((a, b) => getCardWeight(a) - getCardWeight(b))[0]; // логика авто-подкидывания игрока
+
+  const isPlayerTaking = (state.phase === "throw-to-taker" || state.pendingTake === "player");
+
+  return options.sort((a, b) => {
+    let weightA = getCardWeight(a);
+    let weightB = getCardWeight(b);
+
+    if (isPlayerTaking && campaign.difficulty >= 2) {
+      // ЖЕСТОКИЙ ПОДБРОС: Игрок берет. Заваливаем его самыми старшими НЕ-козырными картами.
+      // Козыри (вес > 40) не отдаем никогда (вес 1000).
+      weightA = (a.suit === state.trump.suit) ? 1000 : -a.value;
+      weightB = (b.suit === state.trump.suit) ? 1000 : -b.value;
+    } else if (campaign.difficulty >= 3) {
+      // Игрок отбивается. Ищем его слабости.
+      const playerCanBeatA = state.player.some(c => cardBeats(c, a));
+      const playerCanBeatB = state.player.some(c => cardBeats(c, b));
+
+      // Если мы точно знаем, что игрок НЕ МОЖЕТ побить эту карту, и это не козырь - кидаем её в первую очередь!
+      if (!playerCanBeatA && a.suit !== state.trump.suit) weightA -= 30;
+      if (!playerCanBeatB && b.suit !== state.trump.suit) weightB -= 30;
+    }
+
+    return weightA - weightB;
+  })[0];
+}
+
+// Выбор карты для ЗАЩИТЫ
+function chooseDefenseCard(hand, attack) {
+  const options = [...hand].filter((card) => cardBeats(card, attack));
+  if (!options.length) return null;
+
+  options.sort((a, b) => {
+    let weightA = getCardWeight(a);
+    let weightB = getCardWeight(b);
+
+    // ЧИТЫ МАШИ (Уровень 4+): Подглядываем в руку игрока.
+    // Если мы побьем картой X, а у игрока есть такая же карта (он сможет её подкинуть) - стараемся не бить ею.
+    if (campaign.difficulty >= 4) {
+       const playerCanThrowA = state.player.some(c => c.rank === a.rank);
+       const playerCanThrowB = state.player.some(c => c.rank === b.rank);
+       if (playerCanThrowA) weightA += 15;
+       if (playerCanThrowB) weightB += 15;
+    }
+
+    return weightA - weightB;
+  });
+
+  const bestDefense = options[0];
+
+  // Решаем, стоит ли просто забрать карты из-за жадности
+  if (shouldTakeInsteadOfDefend(bestDefense, attack)) return null;
+
+  // Ошибки и поддавки оставлены ТОЛЬКО на 1 уровне
+  if (campaign.difficulty === 1 && Math.random() < 0.15) return null;
+
+  return bestDefense;
+}
+
+// Логика жадности (забирать карты, чтобы копить козыри)
+function shouldTakeInsteadOfDefend(bestDefense, attack) {
+  if (campaign.difficulty < 2) return false;
+
+  const isTrumpDefense = bestDefense.suit === state.trump.suit;
+  const isTrumpAttack = attack.suit === state.trump.suit;
+  const onlyTrumpCanBeat = isTrumpDefense && !isTrumpAttack;
+
+  if (onlyTrumpCanBeat) {
+    // Умная жадность: если нас заставляют тратить старший козырь (Валет и выше) на мелкий мусор,
+    // и в колоде еще есть карты - лучше забрать, чтобы сохранить мощь на финал.
+    if (bestDefense.value >= 5 && state.deck.length > 6) return true;
+
+    // На 6-7 уровнях Маша вообще не отдает козыри старше 9-ки в начале игры за просто так
+    if (campaign.difficulty >= 6 && bestDefense.value >= 3 && attack.value <= 4 && state.deck.length > 10) return true;
+  }
+
+  return false;
+}
+
+// -------------------------------------------------------------
+// ИГРОВОЙ ЦИКЛ
+// -------------------------------------------------------------
+
 function opponentAttack() {
   if (state.over || state.attacker !== "opponent") return;
   const card = chooseAttackCard(state.opponent);
@@ -397,142 +518,9 @@ function afterPlayerDefense() {
   render();
 }
 
-// -------------------------------------------------------------
-// ИДЕАЛЬНАЯ ЛОГИКА ОЦЕНКИ КАРТ + "ЛЕГАЛЬНЫЙ ЧИТ" МАШИ
-// -------------------------------------------------------------
-
-function attackScore(card) {
-  let score = card.value; 
-  const isTrump = card.suit === state.trump.suit;
-  
-  if (isTrump) {
-    score += 1000; // Огромный штраф за козырь (храним их до финала)
-  }
-
-  // Бонус: скидываем парные карты
-  const duplicates = state.opponent.filter(c => c.rank === card.rank).length - 1;
-  score -= duplicates * 10;
-
-  // ЧИТЫ МАШИ: Работают уже со 2-го уровня
-  if (campaign.difficulty >= 2) {
-    const validDefenses = state.player.filter(c => cardBeats(c, card));
-    
-    if (validDefenses.length === 0) {
-      // Игрок вообще не может отбиться. Кидаем не раздумывая!
-      score -= 500; 
-    } else if (!isTrump) {
-      const hasSuit = validDefenses.some(c => c.suit === card.suit);
-      if (!hasSuit) {
-        // У игрока нет масти, ему ПРИДЕТСЯ тратить козырь! Вытягиваем их.
-        score -= 200;
-      }
-    }
-  }
-
-  return score;
-}
-
-function defenseScore(card, attack) {
-  let score = card.value; 
-  
-  const isTrumpDefense = card.suit === state.trump.suit;
-  const isTrumpAttack = attack.suit === state.trump.suit;
-
-  if (isTrumpDefense && !isTrumpAttack) {
-    score += 1000; // Огромный штраф за трату козыря на обычную масть
-  }
-
-  // ЧИТЫ МАШИ (Уровень 2+)
-  if (campaign.difficulty >= 2) {
-    // Маша смотрит в твою руку: можешь ли ты подкинуть этот номинал?
-    const playerCanThrowIn = state.player.some(c => c.rank === card.rank);
-    if (playerCanThrowIn) {
-      // Если ты можешь подкинуть, Маша избегает этой карты любой ценой
-      score += 500;
-    }
-  }
-
-  return score;
-}
-
-function chooseAttackCard(hand) {
-  const candidates = [...hand].filter(canAttackWith);
-  if (!candidates.length) return null;
-  
-  return candidates
-    .map((card) => ({ card, score: attackScore(card) }))
-    .sort((a, b) => a.score - b.score)[0].card;
-}
-
-function chooseDefenseCard(hand, attack) {
-  const options = [...hand].filter((card) => cardBeats(card, attack));
-  if (!options.length) return null;
-
-  // Проверка на жадность (стоит ли взять)
-  if (shouldTakeInsteadOfDefend(options.sort((a,b) => a.value - b.value)[0], attack)) return null;
-  
-  // Ошибки и поддавки оставлены ТОЛЬКО для 1 уровня сложности
-  const mistakeChance = campaign.difficulty < 2 ? 0.15 : 0;
-  if (Math.random() < mistakeChance) return null;
-  
-  return options
-    .map((card) => ({ card, score: defenseScore(card, attack) }))
-    .sort((a, b) => a.score - b.score)[0].card;
-}
-
-function chooseThrowIn(hand) {
-  if (!state.table.length) return null;
-  
-  const ranksOnTable = new Set(state.table.flatMap(pair => [pair.attack.rank, pair.defense?.rank]).filter(Boolean));
-  let options = [...hand].filter(card => ranksOnTable.has(card.rank));
-  
-  if (!options.length) return null;
-  if (hand !== state.opponent) return options.sort((a, b) => a.value - b.value)[0];
-
-  return options.map(card => {
-     let score;
-     // ЖЕСТОКИЙ ПОДБРОС (если игрок берет, заваливаем его старшими картами)
-     if (campaign.difficulty >= 2 && (state.phase === "throw-to-taker" || state.pendingTake === "player")) {
-         // Чем старше не-козырь, тем лучше его скинуть игроку (-card.value)
-         score = -card.value; 
-         if (card.suit === state.trump.suit) score += 2000; // НИКОГДА не отдаем свои козыри
-     } else {
-         // Обычный подброс во время атаки
-         score = attackScore(card);
-     }
-     return { card, score };
-  }).sort((a, b) => a.score - b.score)[0].card;
-}
-
-function shouldTakeInsteadOfDefend(bestDefense, attack) {
-  const isTrumpDefense = bestDefense.suit === state.trump.suit;
-  const isTrumpAttack = attack.suit === state.trump.suit;
-  const onlyTrumpCanBeat = isTrumpDefense && !isTrumpAttack;
-  
-  // На 1 уровне играет честно
-  if (campaign.difficulty < 2) {
-    return false;
-  }
-
-  // Хардкор (Уровни 2+):
-  // Если заставляют бить козырем обычную карту - Маша лучше возьмет,
-  // чтобы накопить козыри (особенно если козырь старше 8-ки или колода еще полная)
-  if (onlyTrumpCanBeat) {
-    if (bestDefense.value > 2 || state.deck.length > 0) return true;
-  }
-
-  // Если приходится отбиваться очень крупной не-козырной картой (Валет, Дама, Король, Туз),
-  // и в колоде еще много карт, лучше взять и накопить мощь для финала.
-  if (!isTrumpDefense && bestDefense.value >= 5 && state.deck.length > 10) {
-    return true;
-  }
-
-  return false;
-}
-
 function playerTake() {
   if (state.defender !== "player" || state.phase !== "defense") return;
-  state.pendingTake = "player"; // Включаем "Жестокий подброс"
+  state.pendingTake = "player"; 
   
   let extra;
   while (true) {
@@ -612,7 +600,7 @@ function finishMatch(winner) {
 }
 
 // -------------------------------------------------------------
-// ФИКС ВИДЕО (ЧТОБЫ НЕ ВЫЛЕТАЛО НА ВЕСЬ ЭКРАН)
+// ФИКС ВИДЕО ДЛЯ IOS И ТЕЛЕГРАМА
 // -------------------------------------------------------------
 function updateResultMedia(src) {
   const parent = ui.resultImage.parentNode;
@@ -626,13 +614,12 @@ function updateResultMedia(src) {
       video.controls = true;
       video.autoplay = true;
       video.loop = true;
-      video.muted = true; // Важно для автоплея на мобилках
-      video.setAttribute("playsinline", ""); // Фикс для iOS - чтобы не открывалось на весь экран
+      video.muted = true;
+      video.setAttribute("playsinline", ""); 
       video.setAttribute("webkit-playsinline", ""); 
       
-      // Насильно ограничиваем размер видео, чтобы не ломало верстку
       video.style.maxWidth = "100%";
-      video.style.maxHeight = "55vh"; // не даст видео вылезти за пределы диалога
+      video.style.maxHeight = "55vh"; 
       video.style.objectFit = "contain";
       video.style.borderRadius = "8px";
       
@@ -640,7 +627,7 @@ function updateResultMedia(src) {
       ui.resultImage = video;
     }
     ui.resultImage.src = src;
-    ui.resultImage.load(); // <-- ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА
+    ui.resultImage.load(); 
   } else {
     if (ui.resultImage.tagName !== "IMG") {
       const img = document.createElement("img");
@@ -704,11 +691,8 @@ function showResult(winner) {
   ui.nextRoundBtn.textContent = campaign.finished ? "Начать заново" : "Следующая партия";
   
   renderCampaign();
-  
-  // Открываем диалог
   ui.resultDialog.showModal();
 
-  // <-- ДОБАВЛЕННЫЙ БЛОК: Запускаем видео принудительно после открытия -->
   if (ui.resultImage.tagName === "VIDEO") {
     setTimeout(() => {
       const playPromise = ui.resultImage.play();
