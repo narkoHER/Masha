@@ -17,7 +17,8 @@ const mashaScenes = [
   "./assets/masha/stage-6.jpg",
 ];
 
-const removedItems = ["кроссовки", "кофта", "шорты", "топ", "украшения", "последний образ"];
+// Обновленные этапы раздевания по ТЗ
+const removedItems = ["обувь", "топик", "шортики", "лифчик", "украшения", "трусики"];
 
 const mashaLines = {
   intro: [
@@ -49,7 +50,7 @@ const mashaLines = {
     ["Беру. Ты начинаешь раздражать приятно.", "Ладно, этот раунд за тобой.", "Подкидывай, если рука не дрожит.", "Я возьму, но потом верну с процентами.", "Неплохо поймал.", "Не радуйся, это еще не победа.", "Беру и запоминаю ранг.", "Хорошо, ты вынудил."],
     ["Беру. Значит, у тебя есть связка.", "Ты красиво меня прижал.", "Ладно, добавляй, если подготовил пару.", "Я возьму эти карты, но потом ими же накажу.", "Вот это уже похоже на игру.", "Ты заставил меня раскрыться. Цени.", "Беру и пересчитываю варианты.", "Хорошо. Этот кусочек партии твой."],
     ["Беру. Довольный? Пока рано.", "Подкидывай еще. Я выдержу.", "Ты хочешь раздеть меня ходами? Тогда не останавливайся.", "Ладно, твоя наглость сработала.", "Я беру, но потом сама выберу ставку.", "Этот раунд стал горячее.", "Добавляй пару. Не делай вид, что ее нет.", "Ты поймал меня. Мне это даже нравится."],
-    ["Беру. Редко, но метко.", "Ты заставил меня собрать лишнее. Умно.", "Подкидывай все, что подходит. Я хочу увидеть жадность.", "Хорошая комбинация. Не испорти ее.", "Беру и начинаю мстить уже в голове.", "Ты считаешь лучше, чем я думала.", "Если так продолжишь, придется играть на желания.", "Ладно. Один красивый удар тебе засчитан."],
+    ["Беру. Редко, но метко.", "Ты заставил меня собрать лишнее. Умно.", "Подкидывай все, что подходит. Я хочу увидеть жадность.", "Хорошая комбинация. Не испорти ее.", "Беру и начинаю мстить уже в голове.", "Ты считает лучше, чем я думала.", "Если так продолжишь, придется играть на желания.", "Ладно. Один красивый удар тебе засчитан."],
     ["Беру. На финале это дорого.", "Ты выбил из меня ресурс. Уважаю.", "Подкидывай. Финал любит жестокость.", "Хорошо поймал. Но теперь у меня больше карт для ответа.", "Это была сильная атака.", "Я беру, но желание все еще не твое.", "Ты умеешь давить. Проверим, умеешь ли завершать.", "Вот теперь я правда злюсь."],
   ],
   playerDefense: [
@@ -62,7 +63,7 @@ const mashaLines = {
   ],
   mashaAttack: [
     ["Держи.", "Посмотрим, что у тебя есть.", "Не прячь глаза.", "Проверим масть.", "Это маленькая проверка.", "Я начну нежно.", "Твоя очередь нервничать.", "Ну-ка."],
-    ["Держи и не жалуйся.", "Я хочу увидеть твою защиту.", "Теперь мой темп.", "Проверю твою руку.", "Эта карта просилась на стол.", "Не расслабляйся.", "Ты слишком удобно сидишь.", "Начинаю давить."],
+    ["Держи и не жалуйся.", "Я хочу увидеть твою защита.", "Теперь мой темп.", "Проверю твою руку.", "Эта карта просилась на стол.", "Не расслабляйся.", "Ты слишком удобно сидишь.", "Начинаю давить."],
     ["Я пойду туда, где тебе неудобно.", "Посмотрим, сохранил ли ты ответ.", "Эта атака не случайная.", "Я помню, что ты уже тратил.", "Держи задачку.", "Сейчас узнаем, где у тебя пусто.", "Я выбираю давление.", "Тебе придется раскрыться."],
     ["Держи. И не смотри так на меня.", "Я атакую, а ты красиво выкручивайся.", "Если возьмешь, я буду довольна.", "Проверю, насколько ты собран.", "Хочу увидеть, как ты нервничаешь.", "Моя очередь раздевать твою уверенность.", "Ты просил игру поживее.", "Лови мой каприз."],
     ["Я выбираю карту с расчетом.", "Этот ход должен забрать твой ресурс.", "Мне интересно, сколько защит у тебя осталось.", "Я давлю на вероятную пустоту.", "Без читов, только память.", "Сейчас проверим мои подсчеты.", "Если возьмешь, ставка станет вкуснее.", "Я подбираю ключ к твоей руке."],
@@ -283,14 +284,24 @@ function cardBeats(defense, attack) {
   return defense.suit === state.trump.suit && attack.suit !== state.trump.suit;
 }
 
+// -------------------------------------------------------------
+// ИСПРАВЛЕНИЕ: Жесткий контроль лимита карт для подкидывания
+// -------------------------------------------------------------
 function canAttackWith(card) {
   if (!state.table.length) return true;
   const tableRanks = state.table.flatMap((pair) => [pair.attack.rank, pair.defense?.rank]).filter(Boolean);
-  return tableRanks.includes(card.rank) && state.table.length < attackLimit();
+  
+  const defender = state.defender === "player" ? state.player : state.opponent;
+  const defendedCount = state.table.filter(p => p.defense).length;
+  
+  // Игрок физически не может подкинуть больше карт, чем было в руке Маши изначально
+  const maxAllowedAttacks = Math.min(attackLimit(), defender.length + defendedCount);
+  
+  return tableRanks.includes(card.rank) && state.table.length < maxAllowedAttacks;
 }
 
 function attackLimit() {
-  return state.firstBout ? 5 : Number.POSITIVE_INFINITY;
+  return state.firstBout ? 5 : 6;
 }
 
 function removeCard(hand, cardId) {
@@ -361,6 +372,7 @@ function opponentDefend() {
   if (state.over) return;
   const openPair = state.table.find((pair) => !pair.defense);
   if (!openPair) return;
+  
   const defense = chooseDefenseCard(state.opponent, openPair.attack);
   if (!defense) {
     state.pendingTake = "opponent";
@@ -369,10 +381,12 @@ function opponentDefend() {
     render();
     return;
   }
+  
   const played = removeCard(state.opponent, defense.id);
   rememberSeen(played);
   openPair.defense = played;
-  const extra = chooseThrowIn(state.player);
+  
+  // Убран мусорный код с выбором карт для игрока
   state.phase = "attack";
   state.message = randomLine("mashaBeats");
   render();
@@ -380,8 +394,13 @@ function opponentDefend() {
 
 function afterPlayerDefense() {
   if (state.over) return;
+  
+  // ИСПРАВЛЕНИЕ: Маша подкидывает строго по правилам лимита карт
+  const defendedCount = state.table.filter(p => p.defense).length;
+  const maxAllowed = Math.min(attackLimit(), state.player.length + defendedCount);
   const extra = chooseThrowIn(state.opponent);
-  if (extra && state.table.length < Math.min(6, state.player.length + state.table.length)) {
+  
+  if (extra && state.table.length < maxAllowed) {
     const played = removeCard(state.opponent, extra.id);
     rememberSeen(played);
     state.table.push({ attack: played, defense: null });
@@ -439,11 +458,25 @@ function defenseScore(card, attack) {
   return trumpCost + highCost - duplicateSave + lateValue;
 }
 
+// -------------------------------------------------------------
+// ИСПРАВЛЕНИЕ: Умный алгоритм решения "Взять или отбиться"
+// -------------------------------------------------------------
 function shouldTakeInsteadOfDefend(bestDefense, attack) {
-  if (campaign.difficulty >= 4) return false;
-  const onlyTrumpCanBeat = bestDefense.suit === state.trump.suit && attack.suit !== state.trump.suit;
-  const expensiveSameSuit = bestDefense.suit === attack.suit && bestDefense.value - attack.value > 3;
+  const isTrumpDefense = bestDefense.suit === state.trump.suit;
+  const isTrumpAttack = attack.suit === state.trump.suit;
+  const onlyTrumpCanBeat = isTrumpDefense && !isTrumpAttack;
+  const valueDifference = bestDefense.value - attack.value;
+
+  if (campaign.difficulty >= 4) {
+    // УМНАЯ МАША: Берет карты, чтобы не тратить козыри и сильные карты на мелочь
+    if (onlyTrumpCanBeat && bestDefense.value >= 5 && attack.value <= 3) return true;
+    if (!onlyTrumpCanBeat && valueDifference >= 5 && state.deck.length > 0) return true;
+    return false;
+  }
+
+  // Для низких уровней сложности остается шанс случайной сдачи
   const saveGoodCardsChance = campaign.difficulty === 1 ? 0.42 : 0.22;
+  const expensiveSameSuit = !onlyTrumpCanBeat && valueDifference > 3;
   return (onlyTrumpCanBeat || expensiveSameSuit) && Math.random() < saveGoodCardsChance;
 }
 
@@ -483,16 +516,41 @@ function rememberSeen(card) {
   if (card) state.seenCardIds.add(card.id);
 }
 
+// -------------------------------------------------------------
+// ИСПРАВЛЕНИЕ: Прогрессия ошибок и агрессии Маши
+// -------------------------------------------------------------
 function opponentMistakeChance() {
-  return Math.max(0.03, 0.32 - campaign.difficulty * 0.045);
+  if (campaign.difficulty >= 5) return 0; // Маша перестает ошибаться
+  return Math.max(0.05, 0.35 - campaign.difficulty * 0.08);
 }
 
 function throwInAggression() {
-  return Math.min(0.96, 0.42 + campaign.difficulty * 0.08);
+  if (campaign.difficulty >= 6) return 1.0; // В финале всегда подкидывает всё
+  return Math.min(0.95, 0.50 + campaign.difficulty * 0.1);
 }
 
+// -------------------------------------------------------------
+// ИСПРАВЛЕНИЕ: Маша наказывает игрока, подкидывая карты, когда он берет
+// -------------------------------------------------------------
 function playerTake() {
   if (state.defender !== "player" || state.phase !== "defense") return;
+  
+  // Маша докидывает всё что может вдогонку
+  let extra;
+  while (true) {
+    const defendedCount = state.table.filter(p => p.defense).length;
+    const maxAllowed = Math.min(attackLimit(), state.player.length + defendedCount);
+    
+    if (state.table.length >= maxAllowed) break;
+    
+    extra = chooseThrowIn(state.opponent);
+    if (!extra) break;
+    
+    const played = removeCard(state.opponent, extra.id);
+    rememberSeen(played);
+    state.table.push({ attack: played, defense: null });
+  }
+
   const takenCards = collectTable();
   takenCards.forEach((card) => state.knownPlayerCardIds.add(card.id));
   state.player.push(...takenCards);
